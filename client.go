@@ -2,6 +2,7 @@ package email
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ type Client struct {
 }
 
 // Connect 连接到 IMAP 服务器
+// Deprecated: 请使用 AutoLogin 方法替代，此方法将在未来版本中移除
 // 参数:
 //   - address: 服务器地址，格式为 "host:port"，例如 "imap.example.com:993"
 //   - username: 用户名/邮箱地址
@@ -40,6 +42,42 @@ func Connect(address, username, password string) (*Client, error) {
 		return nil, err
 	}
 
+	return &Client{
+		client: client,
+	}, nil
+}
+
+func AutoLogin(data LoginParams) (*Client, error) {
+	client, err := imapclient.DialTLS(fmt.Sprintf("%s:%d", data.Host, data.Port), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	switch data.Host {
+	case "outlook.office365.com":
+		token, err := getAccessTokenFromRefreshToken(data.RefreshToken, data.ClientId)
+		if err != nil {
+			return nil, err
+		}
+		if token["code"].(int) != 0 {
+			return nil, err
+		}
+
+		accessToken := token["access_token"].(string)
+		auth := &XOAUTH2Authenticator{
+			Username:    data.User,
+			AccessToken: accessToken,
+		}
+		if err := client.Authenticate(auth); err != nil {
+			return nil, err
+		}
+	default:
+		err = client.Login(data.Host, data.Pwd).Wait()
+		if err != nil {
+			client.Close()
+			return nil, err
+		}
+	}
 	return &Client{
 		client: client,
 	}, nil

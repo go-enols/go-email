@@ -1,7 +1,7 @@
 package main
 
 import (
-	"time"
+	"os"
 
 	"github.com/go-enols/go-log"
 
@@ -10,14 +10,24 @@ import (
 
 func main() {
 	// 连接到IMAP服务器
-	client, err := email.Connect("邮箱服务器节点", "你的账号", "你的密码")
+	client, err := email.AutoLogin(email.LoginParams{
+		Host:         "outlook.office365.com",
+		Port:         993,
+		User:         "xxxx@hotmail.com",
+		Pwd:          "xxx",
+		ClientId:     "xxxx-xxx-46bd-ae65-b683e7707cb0",
+		RefreshToken: "your token",
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer client.Close()
 
-	log.Debug(client.ListMailboxes())                // 列出所有邮件箱
-	log.Debug(client.GetEmail(10))                   // 获取最新10封邮件
-	log.Debug(client.MonitEmail(10, time.Second*60)) // 监控最新10封邮件
+	log.Debug(client.ListMailboxes()) // 列出所有邮件箱
+	data, err := client.GetEmail(10)  // 获取最新10封邮件
+	if err != nil {
+		return
+	}
+	os.WriteFile("./email.html", []byte(data[len(data)-1].HTMLBody), os.ModeAppend)
 
 }
