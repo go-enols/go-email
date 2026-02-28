@@ -2,6 +2,7 @@ package email
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"strings"
 	"time"
@@ -14,10 +15,13 @@ import (
 )
 
 // ImapClient 封装的 IMAP 客户端
-// 提供了一系列简化的方法用于邮件收发和管理
+// 提供了一系列简化的方法用于邮件读取和管理
 type ImapClient struct {
 	client *imapclient.Client
 }
+
+// 确保ImapClient实现了EmailReader接口
+var _ EmailReader = (*ImapClient)(nil)
 
 // Connect 连接到 IMAP 服务器
 // Deprecated: 请使用 AutoLogin 方法替代，此方法将在未来版本中移除
@@ -106,7 +110,7 @@ type Attachment struct {
 func parseMessage(msg *imapclient.FetchMessageData) (*ParsedMessage, error) {
 	buf, err := msg.Collect()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collect message data: %w", err)
 	}
 
 	parsedMsg := &ParsedMessage{
@@ -120,36 +124,30 @@ func parseMessage(msg *imapclient.FetchMessageData) (*ParsedMessage, error) {
 		parsedMsg.MessageID = buf.Envelope.MessageID
 
 		// 转换发件人信息
-		if len(buf.Envelope.From) > 0 {
-			for _, addr := range buf.Envelope.From {
-				mailAddr := &mail.Address{
-					Name:    addr.Name,
-					Address: addr.Mailbox + "@" + addr.Host,
-				}
-				parsedMsg.From = append(parsedMsg.From, mailAddr)
+		for _, addr := range buf.Envelope.From {
+			mailAddr := &mail.Address{
+				Name:    addr.Name,
+				Address: addr.Mailbox + "@" + addr.Host,
 			}
+			parsedMsg.From = append(parsedMsg.From, mailAddr)
 		}
 
 		// 转换收件人信息
-		if len(buf.Envelope.To) > 0 {
-			for _, addr := range buf.Envelope.To {
-				mailAddr := &mail.Address{
-					Name:    addr.Name,
-					Address: addr.Mailbox + "@" + addr.Host,
-				}
-				parsedMsg.To = append(parsedMsg.To, mailAddr)
+		for _, addr := range buf.Envelope.To {
+			mailAddr := &mail.Address{
+				Name:    addr.Name,
+				Address: addr.Mailbox + "@" + addr.Host,
 			}
+			parsedMsg.To = append(parsedMsg.To, mailAddr)
 		}
 
 		// 转换抄送信息
-		if len(buf.Envelope.Cc) > 0 {
-			for _, addr := range buf.Envelope.Cc {
-				mailAddr := &mail.Address{
-					Name:    addr.Name,
-					Address: addr.Mailbox + "@" + addr.Host,
-				}
-				parsedMsg.Cc = append(parsedMsg.Cc, mailAddr)
+		for _, addr := range buf.Envelope.Cc {
+			mailAddr := &mail.Address{
+				Name:    addr.Name,
+				Address: addr.Mailbox + "@" + addr.Host,
 			}
+			parsedMsg.Cc = append(parsedMsg.Cc, mailAddr)
 		}
 	}
 
@@ -172,12 +170,12 @@ func parseMessage(msg *imapclient.FetchMessageData) (*ParsedMessage, error) {
 	// 使用go-message解析邮件内容
 	entity, err := message.Read(bytes.NewReader(fullBody))
 	if err != nil {
-		return parsedMsg, err
+		return parsedMsg, fmt.Errorf("read message entity: %w", err)
 	}
 
 	mr, err := mail.CreateReader(bytes.NewReader(fullBody))
 	if err != nil {
-		return parsedMsg, err
+		return parsedMsg, fmt.Errorf("create mail reader: %w", err)
 	}
 
 	// 遍历解析各个部分
@@ -187,6 +185,7 @@ func parseMessage(msg *imapclient.FetchMessageData) (*ParsedMessage, error) {
 			break
 		}
 		if err != nil {
+			log.Debug("error reading next part: %v", err)
 			continue
 		}
 
@@ -196,6 +195,7 @@ func parseMessage(msg *imapclient.FetchMessageData) (*ParsedMessage, error) {
 			contentType := h.Get("Content-Type")
 			data, err := io.ReadAll(p.Body)
 			if err != nil {
+				log.Debug("error reading inline part: %v", err)
 				continue
 			}
 
@@ -215,6 +215,7 @@ func parseMessage(msg *imapclient.FetchMessageData) (*ParsedMessage, error) {
 			contentType := h.Get("Content-Type")
 			data, err := io.ReadAll(p.Body)
 			if err != nil {
+				log.Debug("error reading attachment: %v", err)
 				continue
 			}
 
@@ -232,7 +233,7 @@ func parseMessage(msg *imapclient.FetchMessageData) (*ParsedMessage, error) {
 		parsedMsg.TextBody = textBody
 		parsedMsg.HTMLBody = htmlBody
 	}
-	log.Debug("主题", parsedMsg.Subject)
+
 	return parsedMsg, nil
 }
 

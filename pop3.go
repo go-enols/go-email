@@ -24,6 +24,9 @@ type POP3Client struct {
 	pwd    string
 }
 
+// 确保POP3Client实现了EmailReader接口
+var _ EmailReader = (*POP3Client)(nil)
+
 // NewPOP3Client 创建新的POP3客户端
 func NewPOP3Client(host string, port int, user, pwd string) *POP3Client {
 	return &POP3Client{
@@ -87,7 +90,7 @@ func (c *POP3Client) GetEmail(opt ...any) ([]*ParsedMessage, error) {
 	// 获取邮件数量和大小信息
 	count, _, err := c.conn.Stat()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get message count: %v", err)
+		return nil, fmt.Errorf("get message count: %w", err)
 	}
 
 	if count == 0 {
@@ -107,17 +110,16 @@ func (c *POP3Client) GetEmail(opt ...any) ([]*ParsedMessage, error) {
 		// 获取邮件内容
 		msgEntity, err := c.conn.Retr(i)
 		if err != nil {
-			log.Error("Failed to retrieve message", i, ":", err)
+			log.Debug("Failed to retrieve message %d: %v", i, err)
 			continue
 		}
 
 		// 解析邮件
 		parsedMsg, err := c.parseMessage(msgEntity, i)
 		if err != nil {
-			log.Error("Failed to parse message", i, ":", err)
+			log.Debug("Failed to parse message %d: %v", i, err)
 			continue
 		}
-		log.Debug("主题", parsedMsg.Subject)
 
 		messages = append(messages, parsedMsg)
 	}
@@ -127,7 +129,6 @@ func (c *POP3Client) GetEmail(opt ...any) ([]*ParsedMessage, error) {
 
 // parseMessage 解析邮件内容
 func (c *POP3Client) parseMessage(msg *message.Entity, msgNum int) (*ParsedMessage, error) {
-
 	header := msg.Header
 
 	// 解码Subject字段（处理RFC 2047编码）
@@ -136,7 +137,7 @@ func (c *POP3Client) parseMessage(msg *message.Entity, msgNum int) (*ParsedMessa
 		decoder := mime.WordDecoder{}
 		decodedSubject, err := decoder.DecodeHeader(subject)
 		if err != nil {
-			log.Error("Failed to decode subject:", err, "Original subject:", subject)
+			log.Debug("Failed to decode subject: %v, Original subject: %s", err, subject)
 			// 如果解码失败，保持原始subject
 		} else {
 			// 只有在解码成功且结果不同时才更新
@@ -183,7 +184,7 @@ func (c *POP3Client) parseMessage(msg *message.Entity, msgNum int) (*ParsedMessa
 	// 解析邮件正文和附件
 	body, attachments, err := c.parseMessageBody(msg)
 	if err != nil {
-		log.Error("Failed to parse message body:", err)
+		log.Debug("Failed to parse message body: %v", err)
 	}
 
 	// 根据邮件内容类型设置正文
