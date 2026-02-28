@@ -63,9 +63,9 @@ func SMTP() {
 }
 
 func IMAP() {
-	// 连接到POP3服务器
+	// 连接到 IMAP 服务器
 	client, err := email.AutoLoginReader(email.LoginParams{
-		Host:  "pop.qq.com",
+		Host:  "imap.qq.com",
 		Port:  993,
 		User:  "2575169674@qq.com",
 		Pwd:   "you'r password",
@@ -73,12 +73,23 @@ func IMAP() {
 	})
 	if err != nil {
 		log.Error(err)
+		return
 	}
 	defer client.Close()
 
-	data, err := client.GetEmail(1) // 获取最新1封邮件
+	// 获取邮箱状态
+	status, err := client.GetMailboxStatus("INBOX")
 	if err != nil {
 		log.Error(err)
+		return
+	}
+
+	fmt.Printf("IMAP 邮箱：%s, 邮件总数：%d\n", status.Name, status.TotalMessages)
+
+	data, err := client.GetEmail(1) // 获取最新 1 封邮件
+	if err != nil {
+		log.Error(err)
+		return
 	}
 
 	fmt.Println("IMAP:", len(data))

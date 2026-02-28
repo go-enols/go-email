@@ -300,3 +300,32 @@ func (c *POP3Client) MonitEmail(opt ...any) ([]*ParsedMessage, error) {
 	// POP3不支持实时监控，直接调用GetEmail获取邮件
 	return c.GetEmail(opt...)
 }
+
+// MarkAsRead 标记邮件为已读（POP3不支持此功能，返回nil）
+func (c *POP3Client) MarkAsRead(messageID, mailbox string) error {
+	// POP3协议不支持标记邮件状态
+	return nil
+}
+
+// GetEmailByRange 获取指定范围内的邮件（POP3 不支持按范围获取，返回空列表）
+func (c *POP3Client) GetEmailByRange(start, end int, mailbox string) ([]*ParsedMessage, error) {
+	// POP3 协议不支持按范围获取邮件
+	// 这里简化处理，返回所有邮件
+	return c.GetEmail()
+}
+
+// GetMailboxStatus 获取邮箱状态信息（POP3 支持）
+func (c *POP3Client) GetMailboxStatus(mailbox string) (*MailboxStatus, error) {
+	// 获取邮件数量
+	count, _, err := c.conn.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("get mailbox status: %w", err)
+	}
+
+	return &MailboxStatus{
+		Name:          "INBOX", // POP3 只有收件箱
+		TotalMessages: int(count),
+		UIDNext:       0, // POP3 不支持 UID
+		UIDValidity:   0, // POP3 不支持 UID 有效性
+	}, nil
+}

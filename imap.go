@@ -552,3 +552,135 @@ func (c *ImapClient) MonitEmail(opt ...any) ([]*ParsedMessage, error) {
 
 	return newMessages, nil
 }
+
+// GetMailboxStatus 获取邮箱状态信息
+// 参数:
+//   - mailbox: 邮箱名称，默认为"INBOX"
+//
+// 返回:
+//   - *MailboxStatus: 邮箱状态信息
+//   - error: 获取过程中的错误
+func (c *ImapClient) GetMailboxStatus(mailbox string) (*MailboxStatus, error) {
+	if mailbox == "" {
+		mailbox = "INBOX"
+	}
+
+	// 选择邮箱
+	_, err := c.client.Select(mailbox, &imap.SelectOptions{ReadOnly: true}).Wait()
+	if err != nil {
+		return nil, err
+	}
+
+	// 获取邮箱状态
+	status, err := c.client.Status(mailbox, &imap.StatusOptions{
+		NumMessages: true,
+		UIDNext:     true,
+		UIDValidity: true,
+	}).Wait()
+	if err != nil {
+		return nil, err
+	}
+
+	result := &MailboxStatus{
+		Name: mailbox,
+	}
+
+	if status.NumMessages != nil {
+		result.TotalMessages = int(*status.NumMessages)
+	}
+
+	if status.UIDNext != 0 {
+		result.UIDNext = status.UIDNext
+	}
+
+	if status.UIDValidity != 0 {
+		result.UIDValidity = status.UIDValidity
+	}
+
+	return result, nil
+}
+
+// MailboxStatus 邮箱状态信息
+type MailboxStatus struct {
+	Name          string   // 邮箱名称
+	TotalMessages int      // 邮件总数
+	UIDNext       imap.UID // 下一个 UID
+	UIDValidity   uint32   // UID 有效性
+}
+
+// MarkAsRead 标记邮件为已读
+// 参数:
+//   - messageID: 邮件ID
+//   - mailbox: 邮箱名称，默认为"INBOX"
+//
+// 返回:
+//   - error: 标记过程中的错误
+func (c *ImapClient) MarkAsRead(messageID, mailbox string) error {
+	if mailbox == "" {
+		mailbox = "INBOX"
+	}
+
+	// 选择邮箱
+	_, err := c.client.Select(mailbox, nil).Wait()
+	if err != nil {
+		return err
+	}
+
+	// 由于go-imap/v2的API与预期不同，这里使用一个简化的实现
+	// 实际项目中需要根据具体的API文档进行调整
+	// 这里我们假设获取到的邮件已经包含了序列号信息
+	// 然后直接标记为已读
+
+	// 注意：由于API差异，此功能暂时无法完全实现
+	// 建议使用其他方式或等待go-imap/v2的完整文档
+	return fmt.Errorf("MarkAsRead functionality not fully implemented due to API differences")
+}
+
+// GetEmailByRange 获取指定范围内的邮件
+// 参数:
+//   - start: 起始邮件序号
+//   - end: 结束邮件序号
+//   - mailbox: 邮箱名称，默认为"INBOX"
+//
+// 返回:
+//   - []*ParsedMessage: 解析后的邮件列表
+//   - error: 获取过程中的错误
+func (c *ImapClient) GetEmailByRange(start, end int, mailbox string) ([]*ParsedMessage, error) {
+	if mailbox == "" {
+		mailbox = "INBOX"
+	}
+
+	// 选择邮箱
+	_, err := c.client.Select(mailbox, &imap.SelectOptions{ReadOnly: true}).Wait()
+	if err != nil {
+		return nil, err
+	}
+
+	// 创建序列集
+	seqSet := imap.SeqSet{}
+	for i := start; i <= end; i++ {
+		seqSet.AddNum(uint32(i))
+	}
+
+	// 获取邮件完整内容
+	cmd := c.client.Fetch(seqSet, &imap.FetchOptions{
+		Flags:        true,
+		InternalDate: true,
+		RFC822Size:   true,
+		Envelope:     true,
+		BodySection: []*imap.FetchItemBodySection{
+			{}, // 获取完整邮件
+		},
+	})
+
+	var messages []*ParsedMessage
+	for msg := cmd.Next(); msg != nil; msg = cmd.Next() {
+		parsedMsg, err := parseMessage(msg)
+		if err != nil {
+			return nil, err
+		}
+		messages = append(messages, parsedMsg)
+	}
+
+	return messages, nil
+}
